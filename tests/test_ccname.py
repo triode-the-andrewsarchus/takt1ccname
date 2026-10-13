@@ -162,8 +162,34 @@ def test_ccname(stock_path, core_path, ccname_path):
     assert s3 == "EG  ", f"Expected Minilogue EG   preset after turning Knob C, got {s3}"
     print("  [PASS] Encoder Preset cycling works")
 
-    # 8. Test Key NO: Close page
+    # 8. Test Naming Screen & Keyboard Mode
+    # Press YES (id 12) to enter Naming Mode on current slot (CC1)
     ev_key = 0x47b05000
+    uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 12, 1))
+    call(key_fn, 0, ev_key)
+    # Draw naming screen
+    call(draw_fn, bmp, ctrl)
+    print("  [PASS] Entered Naming Mode and rendered pop-up matrix")
+
+    # Type with Trig 1 ('A') and Trig 2 ('B')
+    uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 24, 1)) # Trig 1 (id 24 -> 'A')
+    call(key_fn, 0, ev_key)
+    uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 25, 1)) # Trig 2 (id 25 -> 'B')
+    call(key_fn, 0, ev_key)
+    call(draw_fn, bmp, ctrl)
+    print("  [PASS] Trig keys 1 and 2 typed 'A' and 'B'")
+
+    # Confirm with YES
+    uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 12, 1))
+    call(key_fn, 0, ev_key)
+    call(tick_fn, ctrl)
+
+    s1, l1 = get_desc(148)
+    assert s1.startswith("AB"), f"Expected short name starting with AB, got {s1}"
+    assert l1.startswith("AB"), f"Expected long name starting with AB, got {l1}"
+    print(f"  [PASS] Custom name saved via Keyboard Mode: {s1} / {l1}")
+
+    # 9. Test Key NO: Close page
     uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 13, 1)) # Key NO (id 13), pressed
     call(key_fn, 0, ev_key)
     is_open = struct.unpack(">I", uc.mem_read(open_var, 4))[0]
