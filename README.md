@@ -44,9 +44,19 @@ Musicians sequencing multiple external synths must memorize or write down which 
 
 ---
 
+## How to Name CCs (Digitakt II Style Shortcut)
+
+Just like on the Digitakt II:
+1. Select any MIDI track (**TRK 9–16**).
+2. On the **FLTR** (CC VALUE) or **AMP** (CC SELECT) page, **press and hold `[FUNC]` and press & hold DATA ENTRY knob A–H** (~300 ms).
+3. The on-screen **Naming Screen & Trig Keyboard** opens immediately for that exact CC slot!
+4. Type your custom name and press **`[YES]`** to save. The naming modal closes directly back to your parameter page with your new custom name active!
+
+---
+
 ## User Guide: SETTINGS > MIDI CC NAMES
 
-Navigate to **SETTINGS > MIDI CC NAMES** on the Digitakt to open the configuration screen.
+You can also navigate to **SETTINGS > MIDI CC NAMES** on the Digitakt to open the full overview and management screen.
 
 ### Navigation Mode
 - **Knob A (or [LEFT] / [RIGHT]):** Select active MIDI track (TRK 09 to TRK 16).
