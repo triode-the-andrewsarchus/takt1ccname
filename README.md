@@ -56,10 +56,21 @@ Navigate to **SETTINGS > MIDI CC NAMES** on the Digitakt to open the configurati
 - **[YES]:** Enter character editing mode for the selected slot.
 - **[NO]:** Exit and return to the SETTINGS menu.
 
-### Character Edit Mode
-- **Knob D (or [LEFT] / [RIGHT]):** Move cursor across characters (short name at positions 0–3, long name at 4–18).
-- **Knob E (or [UP] / [DOWN]):** Scroll through characters (`A-Z`, `0-9`, spaces, symbols).
-- **[YES] / [NO]:** Save and return to navigation mode.
+### Authentic Naming Screen & Trig Keyboard Mode
+Pressing **[YES]** or pushing the **LEVEL/DATA** knob on any CC slot opens the dedicated Naming Screen:
+- **Trig Keys 1–16 (Hardware Keyboard):** Direct alphanumeric typing at hardware speed.
+  - **Bank 1 (`[A-P]`):** Trig 1 = `A`, Trig 2 = `B` ... Trig 16 = `P`
+  - **Bank 2 (`[Q-5]`):** Trig 1 = `Q`, Trig 2 = `R` ... Trig 10 = `Z`, Trig 11 = `0` ... Trig 16 = `5`
+  - **Bank 3 (`[SYM]`):** Trig 1 = `6`, Trig 2 = `7` ... symbols (`-`, `_`, `+`, `/`, `!`, `?`, `#`, `%`, `*`, `.`, `:`, ` `)
+- **[PAGE]:** Cycle between Trig keyboard banks (`A-P` -> `Q-5` -> `SYM`).
+- **[FUNC] + [PAGE]:** Toggle editing Long Name (up to 15 chars) vs custom Short Name (up to 4 chars).
+- **LEVEL/DATA Knob:** Scroll characters at current cursor position.
+- **[LEFT] / [RIGHT]:** Move cursor position left/right.
+- **[UP] / [DOWN]:** Step character at cursor up/down.
+- **[FUNC] + [NO]:** Erase character / Backspace (shifts remaining characters left).
+- **[FUNC] + [YES]:** Insert Space (shifts remaining characters right).
+- **[YES]:** Confirm name and save.
+- **[NO]:** Cancel and return to slots list.
 
 ### Track Clipboard Shortcuts
 - **[FUNC] + [RECORD]:** Copy current track's CC names to clipboard.
