@@ -1,0 +1,60 @@
+{
+ "id": "takt1ccname",
+ "version": "1.0",
+ "title": "Digi CC Names",
+ "category": "MIDI",
+ "author": "vega",
+ "license": "GPL-2.0-or-later",
+ "device": "digitakt-mk1",
+ "os": "1.53",
+ "description": "Custom names for each MIDI CC per track on Digitakt I. On MIDI tracks (TRK 9-16), parameter pages (FLTR CC VALUE and AMP CC SELECT) show custom parameter names per track instead of generic VAL1..VAL8 and SEL1..SEL8. Open SETTINGS > MIDI CC NAMES to configure each MIDI track's 8 CC names, choose from built-in synth templates (Standard Synth, Minilogue, MicroFreak, Bass Synth, Drum/Sampler, Mod/FX, General MIDI), select from a library of standard parameter names, or enter custom names character by character. Fully compatible with digi1_mods.",
+ "sources": [
+  "ccname_glue.s",
+  "ccname.c"
+ ],
+ "subscribe": [
+  {
+   "event": "ev_settings",
+   "fn": "ccname_settings",
+   "order": 45
+  },
+  {
+   "event": "ev_draw",
+   "fn": "ccname_draw",
+   "order": 45
+  },
+  {
+   "event": "ev_tick",
+   "fn": "ccname_tick",
+   "order": 45
+  },
+  {
+   "event": "ev_key",
+   "fn": "ccname_key",
+   "order": 45
+  },
+  {
+   "event": "ev_enc",
+   "fn": "ccname_enc",
+   "order": 45
+  }
+ ],
+ "requires": [
+  "core"
+ ],
+ "resources": {
+  "names": [
+   "settings:MIDI CC NAMES"
+  ]
+ },
+ "ports": {
+  "1.54": {
+   "defsym": {
+    "OS154": 1
+   },
+   "cflags": [
+    "-DOS154"
+   ]
+  }
+ }
+}

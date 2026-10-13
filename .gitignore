@@ -1,0 +1,22 @@
+# Build outputs
+out/
+*.work/
+*.o
+*.bin
+*.elf
+*.syx
+*.elemod
+*.snap
+
+# Python / venv
+__pycache__/
+*.pyc
+.venv/
+
+# Local tools / cloned dependencies
+toolchain/
+elekloader/
+digiemu/
+digi1_mods/
+elektron-firmware-tool/
+fw_154/
