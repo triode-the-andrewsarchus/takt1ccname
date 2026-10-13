@@ -196,6 +196,43 @@ def test_ccname(stock_path, core_path, ccname_path):
     assert is_open == 0, "Expected ccname_open == 0 after NO key"
     print("  [PASS] Key NO closes settings page")
 
+    # 10. Test Digitakt II shortcut: [FUNC] + hold Knob C (id 42, CC slot 3)
+    # Switch to MIDI Track 8 (Track 9)
+    uc.mem_write(ACTIVE_TRACK_ADDR, struct.pack(">I", 8))
+    # Send [FUNC] + Knob C pressed (flags = 3: KEYDOWN | KEYFUNC)
+    uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 42, 3))
+    ret = call(key_fn, 0, ev_key)
+    assert ret == 0, "Initial keydown should not consume event so stock can handle brief press"
+
+    # Simulate 8 ticks of holding the knob
+    for _ in range(8):
+        call(tick_fn, ctrl)
+
+    is_open = struct.unpack(">I", uc.mem_read(open_var, 4))[0]
+    assert is_open == 1, "Expected ccname_open == 1 after holding [FUNC] + Knob C for 8 ticks"
+    print("  [PASS] Digitakt II shortcut: [FUNC] + hold Knob C opened Naming Screen directly")
+
+    # Type 'C' (Trig 3, id 26) and 'D' (Trig 4, id 27)
+    uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 26, 1))
+    call(key_fn, 0, ev_key)
+    uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 27, 1))
+    call(key_fn, 0, ev_key)
+
+    # Press YES to confirm and save
+    uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 12, 1))
+    call(key_fn, 0, ev_key)
+
+    # Verify that ccname_open is now 0 (returned directly to parameter page!)
+    is_open = struct.unpack(">I", uc.mem_read(open_var, 4))[0]
+    assert is_open == 0, "Expected ccname_open == 0 (returned directly to parameter page) after YES"
+    print("  [PASS] Confirming with YES exited Naming Screen directly back to parameter page")
+
+    call(tick_fn, ctrl)
+    s3, l3 = get_desc(150) # CC3 (id 150)
+    assert s3.startswith("CD"), f"Expected CC3 short name starting with CD, got {s3}"
+    assert l3.startswith("CD"), f"Expected CC3 long name starting with CD, got {l3}"
+    print(f"  [PASS] Custom CC3 name saved via shortcut: {s3} / {l3}")
+
     print("\nALL CC NAME TESTS PASSED SUCCESSFULLY!")
 
 if __name__ == "__main__":

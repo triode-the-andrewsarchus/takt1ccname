@@ -71,6 +71,9 @@ static int edit_mode = 0;   /* 0 = select slot/preset, 1 = naming keyboard */
 static int char_pos = 0;    /* 0..14 cursor position */
 static int kbd_bank = 0;    /* 0 = A-P, 1 = Q-5, 2 = SYM */
 static int edit_field = 0;  /* 0 = long name (up to 15), 1 = short name (up to 4) */
+static int held_knob = -1;  /* 0..7 for knob A..H held with FUNC, -1 = none */
+static int held_ticks = 0;  /* tick count for press-and-hold detection */
+static int from_shortcut = 0; /* 1 if opened directly via [FUNC]+knob */
 
 /* Clipboard */
 static struct cc_slot clip_slots[NUM_CCS_PER_TRACK];
@@ -248,6 +251,16 @@ static const struct cc_lib_item CC_LIBRARY[] = {
 static const char CHAR_SET[] = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_+!/?#%*.:=";
 #define NUM_CHARS (int)(sizeof(CHAR_SET) - 1)
 
+/* Memory copy helper */
+void *memcpy(void *dst, const void *src, unsigned long n)
+{
+    char *d = (char *)dst;
+    const char *s = (const char *)src;
+    while (n--)
+        *d++ = *s++;
+    return dst;
+}
+
 /* String copy helper without stdlib */
 static void str_copy(char *dst, const char *src, int maxlen)
 {
@@ -381,6 +394,7 @@ void ccname_select(void **payload)
 {
     ccname_open = 1;
     edit_mode = 0;
+    from_shortcut = 0;
     cur_slot = 0;
     INVALIDATE((char *)*payload + 0x38);
 }
@@ -523,6 +537,28 @@ void ccname_draw(void *bmp, void *ctrl)
 void ccname_tick(void *ctrl)
 {
     ccname_update_descriptors();
+
+    /* Press-and-hold [FUNC] + DATA ENTRY knob A-H (Digitakt II style shortcut) */
+    if (held_knob >= 0) {
+        held_ticks++;
+        if (held_ticks >= 8) {
+            int trk = ACTIVE_TRACK;
+            if (trk >= 8 && trk <= 15) {
+                ccname_open = 1;
+                edit_mode = 1;
+                cur_track = trk - 8;
+                cur_slot = held_knob;
+                char_pos = 0;
+                kbd_bank = 0;
+                edit_field = 0;
+                from_shortcut = 1;
+                tracks[cur_track].slots[cur_slot].custom = 1;
+                tracks[cur_track].preset_idx = -1;
+            }
+            held_knob = -1;
+        }
+    }
+
     if (ccname_open)
         *((volatile char *)ctrl + 0x20) = 1;
 }
@@ -539,8 +575,19 @@ int ccname_key(void *brain, void *ev)
 
     ccname_update_descriptors();
 
-    if (!ccname_open)
+    if (!ccname_open) {
+        /* When on MIDI tracks (TRK 9..16), monitor [FUNC] + Knob A..H (ids 40..47) */
+        int trk = ACTIVE_TRACK;
+        if (trk >= 8 && trk <= 15 && func && id >= 40 && id <= 47) {
+            if (KEYDOWN(ev)) {
+                held_knob = id - 40;
+                held_ticks = 0;
+            } else {
+                held_knob = -1;
+            }
+        }
         return 0;
+    }
 
     /* Transport keys (REC, PLAY, STOP) */
     if (!func && (id == 9 || id == 10 || id == 11))
@@ -673,10 +720,18 @@ int ccname_key(void *brain, void *ev)
         case 32:
         case 47: /* LEVEL CLICK */
             edit_mode = 0;
+            if (from_shortcut) {
+                ccname_open = 0;
+                from_shortcut = 0;
+            }
             break;
         case 13: /* NO: cancel and exit edit mode */
         case 33:
             edit_mode = 0;
+            if (from_shortcut) {
+                ccname_open = 0;
+                from_shortcut = 0;
+            }
             break;
         case 14: /* UP: character up */
         case 35: {
@@ -761,6 +816,7 @@ int ccname_key(void *brain, void *ev)
         edit_field = 0;
         char_pos = 0;
         kbd_bank = 0;
+        from_shortcut = 0;
         tracks[cur_track].slots[cur_slot].custom = 1;
         tracks[cur_track].preset_idx = -1;
         break;
