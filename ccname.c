@@ -541,7 +541,7 @@ void ccname_tick(void *ctrl)
     /* Press-and-hold [FUNC] + DATA ENTRY knob A-H (Digitakt II style shortcut) */
     if (held_knob >= 0) {
         held_ticks++;
-        if (held_ticks >= 8) {
+        if (held_ticks >= 6) {
             int trk = ACTIVE_TRACK;
             if (trk >= 8 && trk <= 15) {
                 ccname_open = 1;
@@ -556,6 +556,7 @@ void ccname_tick(void *ctrl)
                 tracks[cur_track].preset_idx = -1;
             }
             held_knob = -1;
+            held_ticks = 0;
         }
     }
 
@@ -564,8 +565,11 @@ void ccname_tick(void *ctrl)
 }
 
 #define KEYID(ev)    (*(int *)((char *)(ev) + 12))
-#define KEYDOWN(ev)  (*(int *)((char *)(ev) + 16) & 1)
-#define KEYFUNC(ev)  (*(int *)((char *)(ev) + 16) & 2)
+#define KEYFLAGS(ev) (*(int *)((char *)(ev) + 16))
+#define KEYDOWN(ev)  (KEYFLAGS(ev) & 1)
+#define KEYFUNC(ev)  (KEYFLAGS(ev) & 2)
+#define KEYUP(ev)    (KEYFLAGS(ev) & 0x10)
+#define KEYLONG(ev)  (KEYFLAGS(ev) & 0x20)
 
 int ccname_key(void *brain, void *ev)
 {
@@ -579,12 +583,35 @@ int ccname_key(void *brain, void *ev)
         /* When on MIDI tracks (TRK 9..16), monitor [FUNC] + Knob A..H (ids 40..47) */
         int trk = ACTIVE_TRACK;
         if (trk >= 8 && trk <= 15 && func && id >= 40 && id <= 47) {
-            if (KEYDOWN(ev)) {
-                held_knob = id - 40;
-                held_ticks = 0;
-            } else {
+            int knob_idx = id - 40;
+            if (KEYLONG(ev)) {
+                /* Hardware panel driver native long-press (~0.5s) */
+                ccname_open = 1;
+                edit_mode = 1;
+                cur_track = trk - 8;
+                cur_slot = knob_idx;
+                char_pos = 0;
+                kbd_bank = 0;
+                edit_field = 0;
+                from_shortcut = 1;
+                tracks[cur_track].slots[cur_slot].custom = 1;
+                tracks[cur_track].preset_idx = -1;
                 held_knob = -1;
+                held_ticks = 0;
+                return 1;
             }
+            if (KEYUP(ev)) {
+                held_knob = -1;
+                held_ticks = 0;
+                return 1;
+            }
+            if (KEYDOWN(ev)) {
+                held_knob = knob_idx;
+                held_ticks = 0;
+                return 1;
+            }
+            /* Consume repeat/intermediate events while held so stock doesn't toggle CC */
+            return 1;
         }
         return 0;
     }
@@ -718,7 +745,6 @@ int ccname_key(void *brain, void *ev)
         switch (id) {
         case 12: /* YES: save and exit edit mode */
         case 32:
-        case 47: /* LEVEL CLICK */
             edit_mode = 0;
             if (from_shortcut) {
                 ccname_open = 0;
@@ -811,7 +837,6 @@ int ccname_key(void *brain, void *ev)
         break;
     case 12: /* YES: enter naming / keyboard mode */
     case 32:
-    case 47: /* LEVEL CLICK */
         edit_mode = 1;
         edit_field = 0;
         char_pos = 0;

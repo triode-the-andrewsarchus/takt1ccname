@@ -202,14 +202,14 @@ def test_ccname(stock_path, core_path, ccname_path):
     # Send [FUNC] + Knob C pressed (flags = 3: KEYDOWN | KEYFUNC)
     uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 42, 3))
     ret = call(key_fn, 0, ev_key)
-    assert ret == 0, "Initial keydown should not consume event so stock can handle brief press"
+    assert ret == 1, "Keydown should consume event so stock does not toggle CC"
 
-    # Simulate 8 ticks of holding the knob
-    for _ in range(8):
+    # Simulate 6 ticks of holding the knob
+    for _ in range(6):
         call(tick_fn, ctrl)
 
     is_open = struct.unpack(">I", uc.mem_read(open_var, 4))[0]
-    assert is_open == 1, "Expected ccname_open == 1 after holding [FUNC] + Knob C for 8 ticks"
+    assert is_open == 1, "Expected ccname_open == 1 after holding [FUNC] + Knob C for 6 ticks"
     print("  [PASS] Digitakt II shortcut: [FUNC] + hold Knob C opened Naming Screen directly")
 
     # Type 'C' (Trig 3, id 26) and 'D' (Trig 4, id 27)
@@ -232,6 +232,31 @@ def test_ccname(stock_path, core_path, ccname_path):
     assert s3.startswith("CD"), f"Expected CC3 short name starting with CD, got {s3}"
     assert l3.startswith("CD"), f"Expected CC3 long name starting with CD, got {l3}"
     print(f"  [PASS] Custom CC3 name saved via shortcut: {s3} / {l3}")
+
+    # 11. Test Hardware Native Long-Press event (flags & 0x20) on Knob H (id 47, CC slot 8)
+    # Send [FUNC] + Knob H with KEYLONG flag (flags = 0x22: KEYLONG | KEYFUNC)
+    uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 47, 0x22))
+    ret = call(key_fn, 0, ev_key)
+    assert ret == 1, "Native long-press should consume event"
+    is_open = struct.unpack(">I", uc.mem_read(open_var, 4))[0]
+    assert is_open == 1, "Expected ccname_open == 1 immediately on KEYLONG event"
+    print("  [PASS] Native long-press event (flags & 0x20) on Knob H opened Naming Screen directly")
+
+    # Type 'H' (Trig 8, id 31)
+    uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 31, 1))
+    call(key_fn, 0, ev_key)
+
+    # Press YES to confirm and save
+    uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 12, 1))
+    call(key_fn, 0, ev_key)
+
+    is_open = struct.unpack(">I", uc.mem_read(open_var, 4))[0]
+    assert is_open == 0, "Expected ccname_open == 0 after YES"
+    call(tick_fn, ctrl)
+    s8, l8 = get_desc(155) # CC8 (id 155)
+    assert s8.startswith("H"), f"Expected CC8 short name starting with H, got {s8}"
+    assert l8.startswith("H"), f"Expected CC8 long name starting with H, got {l8}"
+    print(f"  [PASS] Custom CC8 (Knob H) name saved via hardware long-press: {s8} / {l8}")
 
     print("\nALL CC NAME TESTS PASSED SUCCESSFULLY!")
 
