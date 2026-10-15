@@ -208,6 +208,12 @@ def test_ccname(stock_path, core_path, ccname_path):
     assert is_open == 1, "Expected ccname_open == 1 after holding [FUNC] + Knob C for 6 ticks"
     print("  [PASS] Digitakt II shortcut: [FUNC] + hold Knob C opened Word Picker Menu directly")
 
+    # While picker is open, user releases [FUNC]: must return 0 to pass through to stock
+    uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 1, 0x10))
+    ret_func = call(key_fn, 0, ev_key)
+    assert ret_func == 0, f"Expected FUNC keyup to return 0 (pass-through to stock), got {ret_func}"
+    print("  [PASS] FUNC keyup passed through to stock firmware while modal is open")
+
     # Scroll to word index 18 ("DIST"):
     # CC3 initial on T09 was ENV (index 3). Delta = 15 -> index 18 ("DIST").
     uc.mem_write(ev_enc, struct.pack(">4Ii", 0, 0, 0, 9, 15))

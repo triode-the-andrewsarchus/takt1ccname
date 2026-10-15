@@ -429,6 +429,10 @@ int ccname_key(void *brain, void *ev)
 
     ccname_update_descriptors();
 
+    /* Never consume the FUNC key itself (id 1) so stock UI always receives press and release */
+    if (id == 1)
+        return 0;
+
     if (!ccname_open) {
         /* When on MIDI tracks (TRK 9..16), monitor [FUNC] + Knob A..H (ids 40..47) */
         int trk = ACTIVE_TRACK;
