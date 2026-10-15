@@ -2,14 +2,14 @@
  *
  * On MIDI tracks (TRK 9 to TRK 16), the parameter pages (FLTR CC VALUE and AMP CC SELECT)
  * normally show generic names "VAL1".."VAL8" and "SEL1".."SEL8".
- * This mod allows assigning custom names to each MIDI CC per track, with:
- *   - Per-track custom short name (up to 4 chars) displayed above each knob on FLTR/AMP pages
- *   - Per-track custom long name (up to 15 chars) displayed in popups and lists
- *   - Quick presets for popular synths (Standard Synth, Minilogue, MicroFreak, Bass Synth, Drum, FX, General MIDI)
- *   - Library of standard synth parameter names
- *   - In-device character-by-character editing
- *   - Settings menu page at SETTINGS > MIDI CC NAMES
- *   - Full compatibility with digi1_mods (Digi Poly, Digi Mono, Digi Matrix, Digi EQ, Digi Utilities)
+ * This mod allows assigning custom 4-character names to each MIDI CC knob per track:
+ *   - Each knob independently selects from a build-time 64-word library (words.txt)
+ *   - 6 bits per knob * 8 knobs = 48 bits = 6 bytes per track
+ *   - Durable persistence across project saves/reloads and power cycles
+ *   - Fast, authentic Elektron scrolling menu/picker (LEVEL knob or arrows to scroll, [YES] to assign)
+ *   - Direct [FUNC] + Knob A..H shortcut from parameter pages to assign CC names instantly
+ *   - Overview and settings page at SETTINGS > MIDI CC NAMES
+ *   - Full compatibility with all digi1_mods under ColdFire RAM budget
  */
 
 #ifdef OS154
@@ -17,9 +17,6 @@
 #define F_ACTIVE_TRACK  0x4197c6b4
 #define F_INVALIDATE    0x400c9a3a
 #define F_FILLRECT      0x400c1bce
-#define F_TEXT          0x400c27a4
-#define F_FONT5         0x40200ebc
-#define F_UI_KIT        0x4199ec44
 #define F_TEXT          0x400c27a4
 #define F_FONT5         0x40200ebc
 #define F_UI_KIT        0x4199ec44
@@ -41,22 +38,27 @@
 #define UI_KIT       (*(unsigned char *volatile *)F_UI_KIT)
 
 #include "kitstore.h"
+#include "words.h"
 
 /* Access parameter descriptor fields in firmware RAM (52 bytes per entry) */
 #define DESC_PTR(id, offset) (*(const char *volatile *)(DESC_TABLE_BASE + (id) * 52 + (offset)))
 #define DESC_LONG(id)        DESC_PTR(id, 40)
 #define DESC_SHORT(id)       DESC_PTR(id, 48)
 
-#define NUM_MIDI_TRACKS 8
+#define NUM_MIDI_TRACKS   8
 #define NUM_CCS_PER_TRACK 8
 
+/* MIDI Track record in kit: starts at kit + 0x596, stride 0x70 bytes */
+#define MIDI_TRK_BASE(kit, t) ((unsigned char *)(kit) + 0x596 + (t) * 0x70)
+#define MIDI_TRK_DATA(kit, t) (MIDI_TRK_BASE(kit, t) + 0x66)
+
 struct __attribute__((packed)) cc_slot {
-    char name[5];         /* 4 characters + '\0' */
-    unsigned char custom; /* 1 if custom name is active, 0 for default */
+    char name[5];           /* 4 characters + '\0' */
+    unsigned char custom;   /* 1 if custom name active, 0 for default VAL# */
+    unsigned char word_idx; /* 0..63 index into WORDS */
 };
 
 struct __attribute__((packed)) midi_track {
-    short preset_idx;
     struct cc_slot slots[NUM_CCS_PER_TRACK];
 };
 
@@ -69,94 +71,28 @@ static int stock_saved = 0;
 
 /* UI State */
 int ccname_open = 0;
-static int cur_track = 0;   /* 0..7 for MIDI tracks 9..16 */
-static int cur_slot = 0;    /* 0..7 for CC 1..8 */
-static int edit_mode = 0;   /* 0 = select slot/preset, 1 = naming mode */
-static int char_pos = 0;    /* 0..3 cursor position */
-static int grid_active = 0; /* 1 when holding [FUNC] to show pop-up grid */
-static int grid_row = 0;    /* 0..3 grid row */
-static int grid_col = 0;    /* 0..12 grid column */
-static int func_action = 0; /* 1 if FUNC+NO (erase) or FUNC+YES (space) occurred */
-static int held_knob = -1;  /* 0..7 for knob A..H held with FUNC, -1 = none */
-static int held_ticks = 0;  /* tick count for press-and-hold detection */
+static int cur_track = 0;     /* 0..7 for MIDI tracks 9..16 */
+static int cur_slot = 0;      /* 0..7 for CC 1..8 */
+static int edit_mode = 0;     /* 0 = overview mode, 1 = word picker menu */
+static int picker_idx = 0;    /* 0..63: active word in scrolling menu */
+static int held_knob = -1;    /* 0..7 for knob A..H held with FUNC, -1 = none */
+static int held_ticks = 0;    /* tick count for press-and-hold detection */
 static int from_shortcut = 0; /* 1 if opened directly via [FUNC]+knob */
-
-/* Clipboard (track index, -1 = empty) */
-static int clip_track = -1;
+static int clip_track = -1;   /* Clipboard (track index, -1 = empty) */
 
 static struct kstore kst;
 
-/* Presets */
-struct cc_preset {
-    const char *name;
-    char s[8][5];
+/* Starter word indices for fresh unconfigured kits */
+static const unsigned char STARTER_WORDS[NUM_MIDI_TRACKS][8] = {
+    {1, 2, 3, 4, 5, 6, 7, 13},     /* T09: CUTO, RESO, ENV , ATK , DEC , SUS , REL , LFOR */
+    {1, 2, 3, 4, 5, 13, 14, 31},    /* T10: CUTO, RESO, ENV , ATK , DEC , LFOR, LFOD, SHAP */
+    {1, 2, 3, 5, 15, 63, 63, 23},    /* T11: CUTO, RESO, ENV , DEC , WAVE, USER, USER, MIX  */
+    {1, 2, 17, 18, 4, 5, 12, 26},    /* T12: CUTO, RESO, SUB , DIST, ATK , DEC , GLID, MOD  */
+    {11, 5, 10, 63, 8, 9, 18, 48},   /* T13: PICH, DEC , TUNE, USER, VOL , PAN , DIST, CRSH */
+    {19, 20, 21, 22, 23, 24, 25, 31},/* T14: TIME, FEED, RATE, DPTH, MIX , DRY , WET , SHAP */
+    {26, 27, 8, 9, 28, 63, 29, 30},  /* T15: MOD , BREA, VOL , PAN , EXPR, USER, BRIG, REVB */
+    {0, 0, 0, 0, 0, 0, 0, 0}         /* T16: stock default VAL1..VAL8 */
 };
-
-static const struct cc_preset PRESETS[] = {
-    {
-        "DEFAULT",
-        {}
-    },
-    {
-        "SYNTH",
-        {"CUTO", "RESO", "ENV ", "ATK ", "DEC ", "SUS ", "REL ", "LFOR"}
-    },
-    {
-        "MINILOGUE",
-        {"CUTO", "RESO", "EG  ", "ATK ", "DEC ", "LFOR", "LFOD", "SHAP"}
-    },
-    {
-        "MICROFREAK",
-        {"CUTO", "RESO", "CYCL", "ENV ", "DECA", "WAVE", "TIMB", "MORP"}
-    },
-    {
-        "BASS SYNTH",
-        {"CUTO", "RESO", "SUB ", "DIST", "ATK ", "DEC ", "ACC ", "GLID"}
-    },
-    {
-        "DRUM/SAMP",
-        {"PICH", "DECA", "TUNE", "SNAP", "TONE", "SWNG", "VOL ", "PAN "}
-    },
-    {
-        "MOD/FX",
-        {"TIME", "FEED", "RATE", "DPTH", "MIX ", "DRY ", "WET ", "SHAP"}
-    },
-    {
-        "GEN. MIDI",
-        {"MOD ", "BREA", "VOL ", "PAN ", "EXPR", "SUST", "BRIG", "REVB"}
-    }
-};
-#define NUM_PRESETS (int)(sizeof(PRESETS) / sizeof(PRESETS[0]))
-
-/* Library of standard parameter short-names for single-slot assignment */
-static const char CC_LIBRARY[][5] = {
-    "----", "CUTO", "RESO", "ENV ", "ATK ", "DEC ", "SUS ", "REL ",
-    "VOL ", "PAN ", "TUNE", "PICH", "GLID", "LFOR", "LFOD", "WAVE",
-    "PWM ", "SUB ", "DIST", "TIME", "FEED", "RATE", "DPTH", "MIX ",
-    "DRY ", "WET ", "MOD ", "BREA", "EXPR", "BRIG", "REVB", "SHAP"
-};
-#define NUM_LIB_ITEMS (int)(sizeof(CC_LIBRARY) / sizeof(CC_LIBRARY[0]))
-
-static const char GRID_CHARS[53] =
-    "ABCDEFGHIJKLM"
-    "NOPQRSTUVWXYZ"
-    "0123456789-_+"
-    "!?/#%*.-:=() ";
-
-static void grid_locate(char c)
-{
-    int i;
-    if (c >= 'a' && c <= 'z') c -= 32;
-    for (i = 0; i < 52; i++) {
-        if (GRID_CHARS[i] == c) {
-            grid_row = i / 13;
-            grid_col = i % 13;
-            return;
-        }
-    }
-    grid_row = 0;
-    grid_col = 0;
-}
 
 /* Memory copy helper */
 void *memcpy(void *dst, const void *src, unsigned long n)
@@ -179,40 +115,75 @@ static void str_copy(char *dst, const char *src, int maxlen)
     dst[i] = '\0';
 }
 
-static void apply_preset(int track_idx, int preset_idx)
+/* Pack 8 knobs (6 bits each) into 6 bytes */
+static void pack_track(int t, unsigned char *out6)
 {
-    int s;
-    if (track_idx < 0 || track_idx >= NUM_MIDI_TRACKS)
-        return;
-    if (preset_idx < 0 || preset_idx >= NUM_PRESETS)
-        return;
+    unsigned char w[8];
+    int i;
+    for (i = 0; i < 8; i++)
+        w[i] = tracks[t].slots[i].word_idx & 0x3f;
 
-    tracks[track_idx].preset_idx = preset_idx;
-    if (preset_idx == 0) {
-        for (s = 0; s < 8; s++) {
-            tracks[track_idx].slots[s].name[0] = 'V';
-            tracks[track_idx].slots[s].name[1] = 'A';
-            tracks[track_idx].slots[s].name[2] = 'L';
-            tracks[track_idx].slots[s].name[3] = '1' + s;
-            tracks[track_idx].slots[s].name[4] = '\0';
-            tracks[track_idx].slots[s].custom = 0;
-        }
-        return;
-    }
+    out6[0] = (w[0] & 0x3f) | ((w[1] & 0x03) << 6);
+    out6[1] = ((w[1] >> 2) & 0x0f) | ((w[2] & 0x0f) << 4);
+    out6[2] = ((w[2] >> 4) & 0x03) | ((w[3] & 0x3f) << 2);
+    out6[3] = (w[4] & 0x3f) | ((w[5] & 0x03) << 6);
+    out6[4] = ((w[5] >> 2) & 0x0f) | ((w[6] & 0x0f) << 4);
+    out6[5] = ((w[6] >> 4) & 0x03) | ((w[7] & 0x3f) << 2);
+}
 
-    for (s = 0; s < 8; s++) {
-        str_copy(tracks[track_idx].slots[s].name, PRESETS[preset_idx].s[s], 5);
-        tracks[track_idx].slots[s].custom = 1;
+/* Apply a word index to a slot */
+static void apply_slot_word(int t, int s, int word_idx)
+{
+    if ((unsigned)t >= NUM_MIDI_TRACKS || (unsigned)s >= NUM_CCS_PER_TRACK)
+        return;
+    if (word_idx < 0) word_idx = 0;
+    if (word_idx >= NUM_WORDS) word_idx = NUM_WORDS - 1;
+
+    tracks[t].slots[s].word_idx = (unsigned char)word_idx;
+    if (word_idx == 0) {
+        tracks[t].slots[s].custom = 0;
+        tracks[t].slots[s].name[0] = 'V';
+        tracks[t].slots[s].name[1] = 'A';
+        tracks[t].slots[s].name[2] = 'L';
+        tracks[t].slots[s].name[3] = '1' + s;
+        tracks[t].slots[s].name[4] = '\0';
+    } else {
+        tracks[t].slots[s].custom = 1;
+        str_copy(tracks[t].slots[s].name, WORDS[word_idx], 5);
     }
 }
 
+/* Unpack 6 bytes into 8 knobs */
+static void unpack_track(int t, const unsigned char *in6)
+{
+    unsigned char w[8];
+    int i;
+
+    w[0] = in6[0] & 0x3f;
+    w[1] = ((in6[0] >> 6) & 0x03) | ((in6[1] & 0x0f) << 2);
+    w[2] = ((in6[1] >> 4) & 0x0f) | ((in6[2] & 0x03) << 4);
+    w[3] = (in6[2] >> 2) & 0x3f;
+    w[4] = in6[3] & 0x3f;
+    w[5] = ((in6[3] >> 6) & 0x03) | ((in6[4] & 0x0f) << 2);
+    w[6] = ((in6[4] >> 4) & 0x0f) | ((in6[5] & 0x03) << 4);
+    w[7] = (in6[5] >> 2) & 0x3f;
+
+    for (i = 0; i < 8; i++)
+        apply_slot_word(t, i, w[i]);
+}
+
+/* Synchronize track's packed 6 bytes into kit storage */
 static void ccname_sync_kit_track(unsigned char *kit, int t)
 {
-    int p;
+    unsigned char packed[6];
     if (!kit || (unsigned)t >= NUM_MIDI_TRACKS)
         return;
-    p = tracks[t].preset_idx;
-    XB(kit, MIDI_TRK_XB[t]) = (unsigned char)(p >= 0 ? (p + 1) : 0);
+
+    pack_track(t, packed);
+    memcpy(MIDI_TRK_DATA(kit, t), packed, 6);
+
+    /* Mirror fallback & trigger sound persistence */
+    XB(kit, MIDI_TRK_XB[t]) = (unsigned char)(tracks[t].slots[0].word_idx + 1);
     ks_persist(kit, 4 + (t >> 1));
 }
 
@@ -237,8 +208,10 @@ static void ccname_update_descriptors(void)
         }
         stock_saved = 1;
         if (tracks[0].slots[0].name[0] == '\0') {
-            for (i = 0; i < NUM_MIDI_TRACKS; i++)
-                apply_preset(i, i == 7 ? 0 : i + 1);
+            for (t = 0; t < NUM_MIDI_TRACKS; t++) {
+                for (i = 0; i < 8; i++)
+                    apply_slot_word(t, i, STARTER_WORDS[t][i]);
+            }
         }
     }
 
@@ -257,6 +230,16 @@ static void ccname_update_descriptors(void)
     }
 }
 
+/* Open word picker for a specific track and knob slot */
+static void open_picker(int trk, int slot, int shortcut)
+{
+    ccname_open = 1;
+    edit_mode = 1;
+    cur_track = trk;
+    cur_slot = slot;
+    from_shortcut = shortcut;
+    picker_idx = tracks[trk].slots[slot].word_idx;
+}
 
 /* ---- SETTINGS menu callbacks ---- */
 
@@ -287,44 +270,11 @@ void ccname_rowdraw(void *a, void *b, void *bmp, int x, int y)
 
 /* ---- UI drawing & event handling ---- */
 
-static void draw_box(void *bmp, int x0, int y0, int x1, int y1)
-{
-    FILLRECT(bmp, x0, y0, x1, y1, 0);
-    FILLRECT(bmp, x0, y0, x1, y0, 1);
-    FILLRECT(bmp, x0, y1, x1, y1, 1);
-    FILLRECT(bmp, x0, y0, x0, y1, 1);
-    FILLRECT(bmp, x1, y0, x1, y1, 1);
-}
-
-static void draw_char(void *bmp, int x, int y, char c)
-{
-    char buf[2];
-    buf[0] = c;
-    buf[1] = '\0';
-    TEXT(bmp, FONT5, x, y, -1, "%s", buf);
-}
-
-static void char_step(struct cc_slot *slot, int delta)
-{
-    int ci;
-    for (ci = 0; ci < 52; ci++) {
-        if (GRID_CHARS[ci] == slot->name[char_pos])
-            break;
-    }
-    if (ci >= 52) ci = 51;
-    ci = (ci + delta) % 52;
-    if (ci < 0) ci += 52;
-    slot->name[char_pos] = GRID_CHARS[ci];
-    tracks[cur_track].slots[cur_slot].custom = 1;
-    tracks[cur_track].preset_idx = -1;
-}
-
 #define ROWY(i) (48 - (i) * 6)
 
 void ccname_draw(void *bmp, void *ctrl)
 {
     int i;
-    const char *preset_name;
     struct midi_track *tr;
     (void)ctrl;
 
@@ -335,69 +285,60 @@ void ccname_draw(void *bmp, void *ctrl)
         return;
 
     tr = &tracks[cur_track];
-    preset_name = (tr->preset_idx >= 0 && tr->preset_idx < NUM_PRESETS)
-                      ? PRESETS[tr->preset_idx].name
-                      : "CUSTOM";
 
     FILLRECT(bmp, 0, 0, 127, 63, 0);
 
     if (edit_mode == 1) {
-        /* ==== ELEKTRON AUTHENTIC NAMING SCREEN ==== */
-        struct cc_slot *slot = &tr->slots[cur_slot];
-        int r;
+        /* ==== SCROLLING WORD PICKER MENU ==== */
+        int d;
+        int thumb_y;
 
         /* Top Header */
-        TEXT(bmp, FONT5, 1, 57, -1, "NAME CC%d [T%02d]", cur_slot + 1, cur_track + 9);
+        TEXT(bmp, FONT5, 2, 57, -1, "CC%d NAME [T%02d]", cur_slot + 1, cur_track + 9);
+        TEXT(bmp, FONT5, 88, 57, -1, "[%02d/64]", picker_idx + 1);
 
-        /* 4-Char Name Edit Box (centered) */
-        draw_box(bmp, 44, 42, 83, 54);
+        /* Separator line */
+        FILLRECT(bmp, 0, 54, 127, 54, 1);
 
-        /* Draw 4 characters inside Edit Box */
-        for (i = 0; i < 4; i++) {
-            char ch = slot->name[i];
-            if (ch != '\0' && ch != ' ')
-                draw_char(bmp, 49 + i * 8, 45, ch);
-        }
-        /* Inverted cursor highlight on active character */
-        {
-            int hx = 48 + char_pos * 8;
-            FILLRECT(bmp, hx, 44, hx + 6, 51, -1);
-        }
+        /* 5 visible rows centered on picker_idx */
+        for (d = -2; d <= 2; d++) {
+            int idx = (picker_idx + d) % NUM_WORDS;
+            int y;
+            if (idx < 0)
+                idx += NUM_WORDS;
 
-        if (grid_active) {
-            /* Pop-Up Naming Grid (shown while holding [FUNC]) */
-            int c;
-            draw_box(bmp, 1, 0, 126, 39);
+            y = 23 - d * 10; /* d=-2: 43, d=-1: 33, d=0: 23, d=1: 13, d=2: 3 */
 
-            TEXT(bmp, FONT5, 6, 32, -1, "SELECT CHAR [RELEASE FUNC]");
-            for (r = 0; r < 4; r++) {
-                int ry = 24 - r * 7;
-                for (c = 0; c < 13; c++) {
-                    int cx = 6 + c * 9;
-                    if (r == 3 && c == 12)
-                        TEXT(bmp, FONT5, cx, ry, -1, "SP");
-                    else
-                        draw_char(bmp, cx, ry, GRID_CHARS[r * 13 + c]);
+            if (d == 0) {
+                /* Active / Center row: inverted highlight box */
+                FILLRECT(bmp, 6, y - 2, 118, y + 8, 1);
+                if (idx == 0) {
+                    TEXT(bmp, FONT5, 10, y, 0, "> %02d: ---- [DEFAULT]", idx + 1);
+                } else {
+                    TEXT(bmp, FONT5, 10, y, 0, "> %02d: %-4s", idx + 1, WORDS[idx]);
+                }
+            } else {
+                /* Inactive rows: standard text */
+                if (idx == 0) {
+                    TEXT(bmp, FONT5, 14, y, -1, "  %02d: ----", idx + 1);
+                } else {
+                    TEXT(bmp, FONT5, 14, y, -1, "  %02d: %-4s", idx + 1, WORDS[idx]);
                 }
             }
-            /* Highlight selected character in grid */
-            {
-                int hx = 6 + grid_col * 9;
-                int hy = 24 - grid_row * 7;
-                int hw = (grid_row == 3 && grid_col == 12) ? 10 : 6;
-                FILLRECT(bmp, hx - 1, hy - 1, hx + hw - 1, hy + 5, -1);
-            }
-        } else {
-            /* Standard editing view hints */
-            TEXT(bmp, FONT5, 5, 26, -1, "HOLD [FUNC]: POP-UP GRID");
-            TEXT(bmp, FONT5, 5, 16, -1, "ARROWS/LEVEL: EDIT CHAR");
-            TEXT(bmp, FONT5, 5, 6,  -1, "[YES]:SAVE  [NO]:CANCEL");
         }
+
+        /* Right scrollbar indicator */
+        FILLRECT(bmp, 123, 3, 124, 51, 1);
+        thumb_y = 45 - (picker_idx * 42) / (NUM_WORDS - 1);
+        if (thumb_y < 3) thumb_y = 3;
+        if (thumb_y > 45) thumb_y = 45;
+        FILLRECT(bmp, 122, thumb_y, 125, thumb_y + 6, 1);
+
     } else {
         /* ==== CC SLOTS OVERVIEW MODE ==== */
         /* Header */
         TEXT(bmp, FONT5, 1, 57, -1, "MIDI CC NAMES");
-        TEXT(bmp, FONT5, 78, 57, -1, "T%02d [%s]", cur_track + 9, preset_name);
+        TEXT(bmp, FONT5, 84, 57, -1, "TRK %02d", cur_track + 9);
 
         /* 8 CC slot rows */
         for (i = 0; i < 8; i++) {
@@ -419,43 +360,34 @@ void ccname_draw(void *bmp, void *ctrl)
         }
 
         /* Footer */
-        TEXT(bmp, FONT5, 1, 1, -1, "A:TRK B:SLOT C:PRE D:LIB [YES]");
+        TEXT(bmp, FONT5, 1, 1, -1, "A:TRK B:SLOT C:WORD [YES]:PICK");
     }
-}
-
-static void open_edit_mode(int trk, int slot, int shortcut)
-{
-    ccname_open = 1;
-    edit_mode = 1;
-    cur_track = trk;
-    cur_slot = slot;
-    char_pos = 0;
-    grid_active = 0;
-    func_action = 0;
-    from_shortcut = shortcut;
-    tracks[trk].slots[slot].custom = 1;
-    tracks[trk].preset_idx = -1;
 }
 
 void ccname_tick(void *ctrl)
 {
     unsigned char *kit = UI_KIT;
 
-    /* Kit / Project Storage */
+    /* Kit / Project Storage synchronization */
     if (kit) {
         int r = ccname_kstore_tick(&kst, kit);
         if (r == KS_LOADED || r == KS_OTHER) {
             int t;
             for (t = 0; t < NUM_MIDI_TRACKS; t++) {
-                unsigned char b = XB(kit, MIDI_TRK_XB[t]);
-                if (b != 0) {
-                    int p = b - 1;
-                    if (p >= 0 && p < NUM_PRESETS) {
-                        apply_preset(t, p);
+                unsigned char *src = MIDI_TRK_DATA(kit, t);
+                int non_zero = 0, k;
+                for (k = 0; k < 6; k++) {
+                    if (src[k] != 0) {
+                        non_zero = 1;
+                        break;
                     }
+                }
+                if (non_zero) {
+                    unpack_track(t, src);
                 } else {
-                    /* Kit has no setting: initialize with starter preset and sync */
-                    apply_preset(t, t == 7 ? 0 : t + 1);
+                    /* Kit has no setting: initialize with starter words and sync */
+                    for (k = 0; k < 8; k++)
+                        apply_slot_word(t, k, STARTER_WORDS[t][k]);
                     ccname_sync_kit_track(kit, t);
                 }
             }
@@ -471,7 +403,7 @@ void ccname_tick(void *ctrl)
         if (held_ticks >= 6) {
             int trk = ACTIVE_TRACK;
             if (trk >= 8 && trk <= 15) {
-                open_edit_mode(trk - 8, held_knob, 1);
+                open_picker(trk - 8, held_knob, 1);
             }
             held_knob = -1;
             held_ticks = 0;
@@ -504,7 +436,7 @@ int ccname_key(void *brain, void *ev)
             int knob_idx = id - 40;
             if (KEYLONG(ev)) {
                 /* Hardware panel driver native long-press (~0.5s) */
-                open_edit_mode(trk - 8, knob_idx, 1);
+                open_picker(trk - 8, knob_idx, 1);
                 held_knob = -1;
                 held_ticks = 0;
                 return 1;
@@ -519,109 +451,29 @@ int ccname_key(void *brain, void *ev)
                 held_ticks = 0;
                 return 1;
             }
-            /* Consume repeat/intermediate events while held so stock doesn't toggle CC */
             return 1;
         }
         return 0;
     }
 
+    /* Modal consumes all non-KEYDOWN events */
+    if (!KEYDOWN(ev))
+        return 1;
+
     if (edit_mode == 1) {
-        struct cc_slot *slot = &tracks[cur_track].slots[cur_slot];
-
-        /* Detect FUNC release: insert character if user was navigating grid */
-        if (!func && grid_active) {
-            if (!func_action) {
-                char ch = GRID_CHARS[grid_row * 13 + grid_col];
-                slot->name[char_pos] = ch;
-                slot->name[4] = '\0';
-                if (char_pos < 3)
-                    char_pos++;
-                tracks[cur_track].slots[cur_slot].custom = 1;
-                tracks[cur_track].preset_idx = -1;
-            }
-            grid_active = 0;
-            func_action = 0;
-            return 1;
-        }
-
-        /* Detect FUNC press: open grid and center on current char */
-        if (func && !grid_active) {
-            char cur_ch = slot->name[char_pos];
-            grid_locate(cur_ch);
-            grid_active = 1;
-            func_action = 0;
-        }
-
-        /* If key is not down edge, consume while in modal naming */
-        if (!KEYDOWN(ev))
-            return 1;
-
-        /* [FUNC] + [NO]: Erase / Backspace */
-        if (func && (id == 13 || id == 33)) {
-            func_action = 1;
-            if (char_pos > 0) {
-                int k;
-                for (k = char_pos - 1; k < 3; k++)
-                    slot->name[k] = slot->name[k + 1];
-                slot->name[3] = ' ';
-                slot->name[4] = '\0';
-                char_pos--;
-            } else {
-                slot->name[0] = ' ';
-            }
-            return 1;
-        }
-
-        /* [FUNC] + [YES]: Insert Space */
-        if (func && (id == 12 || id == 32)) {
-            int k;
-            func_action = 1;
-            for (k = 3; k > char_pos; k--)
-                slot->name[k] = slot->name[k - 1];
-            slot->name[char_pos] = ' ';
-            slot->name[4] = '\0';
-            if (char_pos < 3)
-                char_pos++;
-            return 1;
-        }
-
-        /* Grid Navigation while holding [FUNC] */
-        if (grid_active) {
-            switch (id) {
-            case 14: /* UP */
-            case 35:
-                if (grid_row > 0) grid_row--; else grid_row = 3;
-                break;
-            case 15: /* DOWN */
-            case 36:
-                if (grid_row < 3) grid_row++; else grid_row = 0;
-                break;
-            case 16: /* LEFT */
-            case 34:
-                if (grid_col > 0) grid_col--; else grid_col = 12;
-                break;
-            case 17: /* RIGHT */
-            case 37:
-                if (grid_col < 12) grid_col++; else grid_col = 0;
-                break;
-            default:
-                break;
-            }
-            return 1;
-        }
-
-        /* Normal Editing Navigation & Confirmation (when [FUNC] not held) */
+        /* ==== WORD PICKER MENU NAVIGATION ==== */
         switch (id) {
-        case 12: /* YES: save and exit edit mode */
+        case 12: /* YES: confirm and apply word */
         case 32:
-            edit_mode = 0;
+            apply_slot_word(cur_track, cur_slot, picker_idx);
             ccname_mark_dirty(cur_track);
+            edit_mode = 0;
             if (from_shortcut) {
                 ccname_open = 0;
                 from_shortcut = 0;
             }
             break;
-        case 13: /* NO: cancel and exit edit mode */
+        case 13: /* NO: cancel */
         case 33:
             edit_mode = 0;
             if (from_shortcut) {
@@ -629,23 +481,31 @@ int ccname_key(void *brain, void *ev)
                 from_shortcut = 0;
             }
             break;
-        case 14: /* UP: character up */
+        case 14: /* UP: previous word */
         case 35:
-            char_step(slot, 1);
+            if (picker_idx > 0)
+                picker_idx--;
+            else
+                picker_idx = NUM_WORDS - 1;
             break;
-        case 15: /* DOWN: character down */
+        case 15: /* DOWN: next word */
         case 36:
-            char_step(slot, -1);
+            if (picker_idx < NUM_WORDS - 1)
+                picker_idx++;
+            else
+                picker_idx = 0;
             break;
-        case 16: /* LEFT */
+        case 16: /* LEFT: page up (-8) */
         case 34:
-            if (char_pos > 0)
-                char_pos--;
+            picker_idx -= 8;
+            if (picker_idx < 0)
+                picker_idx += NUM_WORDS;
             break;
-        case 17: /* RIGHT */
+        case 17: /* RIGHT: page down (+8) */
         case 37:
-            if (char_pos < 3)
-                char_pos++;
+            picker_idx += 8;
+            if (picker_idx >= NUM_WORDS)
+                picker_idx -= NUM_WORDS;
             break;
         default:
             break;
@@ -653,13 +513,10 @@ int ccname_key(void *brain, void *ev)
         return 1;
     }
 
-    /* ==== NORMAL CC OVERVIEW NAVIGATION MODE ==== */
-    /* Transport keys (REC, PLAY, STOP) */
+    /* ==== OVERVIEW NAVIGATION MODE ==== */
+    /* Transport keys (REC, PLAY, STOP) pass through when not holding FUNC */
     if (!func && (id == 9 || id == 10 || id == 11))
         return 0;
-
-    if (!KEYDOWN(ev))
-        return 1;
 
     /* Clipboard shortcuts */
     if (func) {
@@ -672,17 +529,19 @@ int ccname_key(void *brain, void *ev)
                 int s;
                 for (s = 0; s < 8; s++)
                     tracks[cur_track].slots[s] = tracks[clip_track].slots[s];
-                tracks[cur_track].preset_idx = -1; /* mark as custom */
                 ccname_mark_dirty(cur_track);
             }
             return 1;
         }
         if (id == 10 || id == 25) {  /* FUNC+PLAY: Reset to default */
-            apply_preset(cur_track, 0);
+            int s;
+            for (s = 0; s < 8; s++)
+                apply_slot_word(cur_track, s, 0);
             ccname_mark_dirty(cur_track);
             return 1;
         }
     }
+
     switch (id) {
     case 13: /* NO: exit page */
     case 33:
@@ -716,15 +575,9 @@ int ccname_key(void *brain, void *ev)
         else
             cur_track = 0;
         break;
-    case 12: /* YES: enter naming mode */
+    case 12: /* YES: open Word Picker menu */
     case 32:
-        edit_mode = 1;
-        char_pos = 0;
-        grid_active = 0;
-        func_action = 0;
-        from_shortcut = 0;
-        tracks[cur_track].slots[cur_slot].custom = 1;
-        tracks[cur_track].preset_idx = -1;
+        open_picker(cur_track, cur_slot, 0);
         break;
     default:
         break;
@@ -747,22 +600,11 @@ int ccname_enc(void *brain, void *ev)
     s = delta > 0 ? 1 : -1;
 
     if (edit_mode == 1) {
-        if (grid_active) {
-            /* While [FUNC] is held, LEVEL/DATA knob (id 9) navigates pop-up grid */
-            if (id == 9) {
-                int pos = (grid_row * 13 + grid_col + delta) % 52;
-                if (pos < 0) pos += 52;
-                grid_row = pos / 13;
-                grid_col = pos % 13;
-            }
-            return 1;
-        }
-
-        /* In standard Naming Mode:
-         * LEVEL/DATA knob (id 9) or Knobs E/F cycles character at cursor position
-         */
+        /* LEVEL knob (id 9) or Knobs E/F cycles through the 64 words */
         if (id == 9 || id == 5 || id == 6) {
-            char_step(&tracks[cur_track].slots[cur_slot], delta);
+            picker_idx = (picker_idx + delta) % NUM_WORDS;
+            if (picker_idx < 0)
+                picker_idx += NUM_WORDS;
             return 1;
         }
         return 1;
@@ -793,27 +635,19 @@ int ccname_enc(void *brain, void *ev)
         if (cur_slot > 7) cur_slot = 0;
         break;
     }
-    case 3: { /* Knob C: cycle Preset for track */
-        int p = tracks[cur_track].preset_idx + s;
-        if (p < 0) p = NUM_PRESETS - 1;
-        if (p >= NUM_PRESETS) p = 0;
-        apply_preset(cur_track, p);
+    case 3: { /* Knob C: cycle word directly (+1 / -1) */
+        int cur_w = tracks[cur_track].slots[cur_slot].word_idx;
+        int next_w = (cur_w + s) % NUM_WORDS;
+        if (next_w < 0) next_w += NUM_WORDS;
+        apply_slot_word(cur_track, cur_slot, next_w);
         ccname_mark_dirty(cur_track);
         break;
     }
-    case 4: { /* Knob D: quick Library Select for current slot */
-        static int lib_idx = 0;
-        lib_idx += s;
-        if (lib_idx < 0) lib_idx = NUM_LIB_ITEMS - 1;
-        if (lib_idx >= NUM_LIB_ITEMS) lib_idx = 0;
-
-        if (lib_idx == 0) {
-            tracks[cur_track].slots[cur_slot].custom = 0;
-        } else {
-            str_copy(tracks[cur_track].slots[cur_slot].name, CC_LIBRARY[lib_idx], 5);
-            tracks[cur_track].slots[cur_slot].custom = 1;
-            tracks[cur_track].preset_idx = -1;
-        }
+    case 4: { /* Knob D: page jump word (+/- 8) */
+        int cur_w = tracks[cur_track].slots[cur_slot].word_idx;
+        int next_w = (cur_w + s * 8) % NUM_WORDS;
+        if (next_w < 0) next_w += NUM_WORDS;
+        apply_slot_word(cur_track, cur_slot, next_w);
         ccname_mark_dirty(cur_track);
         break;
     }

@@ -8,7 +8,11 @@ VERSION ?= DCCN
 
 all: mod
 
-mod:
+words.h: words.txt tools/gen_words.py
+	@echo "Generating words.h from words.txt..."
+	$(PYTHON) tools/gen_words.py words.txt words.h
+
+mod: words.h
 	@echo "Building takt1ccname .elemod..."
 	@mkdir -p out
 	ELEKLOADER_CROSS=$(CROSS) PYTHONPATH=$(ROOT)/elekloader $(PYTHON) -m elekloader.sdk.build $(ROOT) --stock $(STOCK) --out $(ROOT)/out
@@ -33,6 +37,6 @@ lint: mod
 	PYTHONPATH=$(ROOT)/elekloader $(PYTHON) -m elekloader.lint $(ROOT)/out/takt1ccname-1.0-os1.54.elemod
 
 clean:
-	rm -rf out *.work /tmp/Digitakt_OS1.54_ccname.syx
+	rm -rf out *.work /tmp/Digitakt_OS1.54_ccname.syx words.h
 
 .PHONY: all mod test lint syx clean
