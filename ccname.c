@@ -310,13 +310,13 @@ void ccname_draw(void *bmp, void *ctrl)
             y = 23 - d * 10; /* d=-2: 43, d=-1: 33, d=0: 23, d=1: 13, d=2: 3 */
 
             if (d == 0) {
-                /* Active / Center row: inverted highlight box */
-                FILLRECT(bmp, 6, y - 2, 118, y + 8, 1);
                 if (idx == 0) {
-                    TEXT(bmp, FONT5, 10, y, 0, "> %02d: ---- [DEFAULT]", idx + 1);
+                    TEXT(bmp, FONT5, 10, y, -1, "> %02d: ---- [DEFAULT]", idx + 1);
                 } else {
-                    TEXT(bmp, FONT5, 10, y, 0, "> %02d: %-4s", idx + 1, WORDS[idx]);
+                    TEXT(bmp, FONT5, 10, y, -1, "> %02d: %-4s", idx + 1, WORDS[idx]);
                 }
+                /* Invert row to create crisp black-on-yellow highlight bar */
+                FILLRECT(bmp, 6, y - 1, 118, y + 5, -1);
             } else {
                 /* Inactive rows: standard text */
                 if (idx == 0) {
