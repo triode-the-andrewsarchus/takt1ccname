@@ -470,13 +470,32 @@ void ccname_draw(void *bmp, void *ctrl)
 
         /* Active Field Text inside Box */
         if (edit_field == 0) {
-            TEXT(bmp, FONT5, 5, 45, -1, "%-15s", slot->long_name);
-            int cx = 5 + char_pos * 6;
-            FILLRECT(bmp, cx - 1, 44, cx + 5, 52, -1);
+            int i;
+            for (i = 0; i < 15; i++) {
+                char ch = slot->long_name[i];
+                if (ch != '\0' && ch != ' ') {
+                    char buf[2];
+                    buf[0] = ch;
+                    buf[1] = '\0';
+                    TEXT(bmp, FONT5, 12 + i * 7 + 1, 45, -1, "%s", buf);
+                }
+            }
+            int hx = 12 + char_pos * 7;
+            FILLRECT(bmp, hx, 44, hx + 6, 51, -1);
         } else {
-            TEXT(bmp, FONT5, 5, 45, -1, "SHORT: %-4s", slot->short_name);
-            int cx = 47 + char_pos * 6;
-            FILLRECT(bmp, cx - 1, 44, cx + 5, 52, -1);
+            int i;
+            TEXT(bmp, FONT5, 12, 45, -1, "SHORT:");
+            for (i = 0; i < 4; i++) {
+                char ch = slot->short_name[i];
+                if (ch != '\0' && ch != ' ') {
+                    char buf[2];
+                    buf[0] = ch;
+                    buf[1] = '\0';
+                    TEXT(bmp, FONT5, 48 + i * 7 + 1, 45, -1, "%s", buf);
+                }
+            }
+            int hx = 48 + char_pos * 7;
+            FILLRECT(bmp, hx, 44, hx + 6, 51, -1);
         }
 
         if (grid_active) {
