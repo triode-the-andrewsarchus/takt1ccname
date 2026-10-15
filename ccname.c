@@ -468,34 +468,29 @@ void ccname_draw(void *bmp, void *ctrl)
         FILLRECT(bmp, 2, 42, 2, 54, 1);
         FILLRECT(bmp, 125, 42, 125, 54, 1);
 
-        /* Draw Long Name Text inside Box */
-        TEXT(bmp, FONT5, 5, 45, -1, "%-15s", slot->long_name);
-
-        /* Inverted Cursor on active char in long name */
+        /* Active Field Text inside Box */
         if (edit_field == 0) {
+            TEXT(bmp, FONT5, 5, 45, -1, "%-15s", slot->long_name);
             int cx = 5 + char_pos * 6;
             FILLRECT(bmp, cx - 1, 44, cx + 5, 52, -1);
-        }
-
-        /* Short Name preview */
-        TEXT(bmp, FONT5, 4, 34, -1, "SHORT:[%-4s]", slot->short_name);
-        if (edit_field == 1) {
-            int cx = 39 + char_pos * 6;
-            FILLRECT(bmp, cx - 1, 33, cx + 5, 41, -1);
+        } else {
+            TEXT(bmp, FONT5, 5, 45, -1, "SHORT: %-4s", slot->short_name);
+            int cx = 47 + char_pos * 6;
+            FILLRECT(bmp, cx - 1, 44, cx + 5, 52, -1);
         }
 
         if (grid_active) {
             /* Pop-Up Naming Grid (shown while holding [FUNC]) */
             int c;
-            FILLRECT(bmp, 1, 0, 126, 32, 0);
+            FILLRECT(bmp, 1, 0, 126, 39, 0);
             FILLRECT(bmp, 1, 0, 126, 0, 1);
-            FILLRECT(bmp, 1, 32, 126, 32, 1);
-            FILLRECT(bmp, 1, 0, 1, 32, 1);
-            FILLRECT(bmp, 126, 0, 126, 32, 1);
+            FILLRECT(bmp, 1, 39, 126, 39, 1);
+            FILLRECT(bmp, 1, 0, 1, 39, 1);
+            FILLRECT(bmp, 126, 0, 126, 39, 1);
 
-            TEXT(bmp, FONT5, 6, 26, -1, "SELECT CHAR [RELEASE FUNC]");
+            TEXT(bmp, FONT5, 6, 32, -1, "SELECT CHAR [RELEASE FUNC]");
             for (r = 0; r < 4; r++) {
-                int ry = 20 - r * 5;
+                int ry = 24 - r * 7;
                 for (c = 0; c < 13; c++) {
                     int cx = 6 + c * 9;
                     if (r == 3 && c == 12) {
@@ -511,15 +506,20 @@ void ccname_draw(void *bmp, void *ctrl)
             /* Highlight selected character in grid */
             {
                 int hx = 6 + grid_col * 9;
-                int hy = 20 - grid_row * 5;
+                int hy = 24 - grid_row * 7;
                 int hw = (grid_row == 3 && grid_col == 12) ? 10 : 6;
                 FILLRECT(bmp, hx - 1, hy - 1, hx + hw - 1, hy + 5, -1);
             }
         } else {
             /* Standard editing view hints */
-            TEXT(bmp, FONT5, 2, 22, -1, "HOLD [FUNC]: POP-UP GRID");
-            TEXT(bmp, FONT5, 2, 12, -1, "ARROWS/LEVEL: EDIT CHAR");
-            TEXT(bmp, FONT5, 2, 2, -1, "[PAGE]:FIELD  [YES]:SAVE");
+            if (edit_field == 0)
+                TEXT(bmp, FONT5, 5, 32, -1, "SHORT: [%-4s]", slot->short_name);
+            else
+                TEXT(bmp, FONT5, 5, 32, -1, "LONG:  [%-15s]", slot->long_name);
+
+            TEXT(bmp, FONT5, 5, 22, -1, "HOLD [FUNC]: POP-UP GRID");
+            TEXT(bmp, FONT5, 5, 12, -1, "ARROWS/LEVEL: EDIT CHAR");
+            TEXT(bmp, FONT5, 5, 2,  -1, "[PAGE]:FIELD  [YES]:SAVE");
         }
     } else {
         /* ==== CC SLOTS OVERVIEW MODE ==== */
