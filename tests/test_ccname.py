@@ -162,24 +162,46 @@ def test_ccname(stock_path, core_path, ccname_path):
     assert s3 == "EG  ", f"Expected Minilogue EG   preset after turning Knob C, got {s3}"
     print("  [PASS] Encoder Preset cycling works")
 
-    # 8. Test Naming Screen & Keyboard Mode
+    # 8. Test Authentic Elektron Pop-Up Naming Screen
     # Press YES (id 12) to enter Naming Mode on current slot (CC1)
     ev_key = 0x47b05000
     uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 12, 1))
     call(key_fn, 0, ev_key)
-    # Draw naming screen
     call(draw_fn, bmp, ctrl)
     print("  [PASS] Entered Naming Mode and rendered pop-up matrix")
 
-    # Type with Trig 1 ('A') and Trig 2 ('B')
-    uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 24, 1)) # Trig 1 (id 24 -> 'A')
+    # Step 8a: Verify Trig keys (ids 24..39) do NOT type (zero trig typewriter interference)
+    uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 24, 1)) # Trig 1
     call(key_fn, 0, ev_key)
-    uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 25, 1)) # Trig 2 (id 25 -> 'B')
+
+    # Step 8b: Hold [FUNC] (id 1, flags=3: KEYDOWN | KEYFUNC) to open pop-up grid
+    uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 1, 3))
     call(key_fn, 0, ev_key)
     call(draw_fn, bmp, ctrl)
-    print("  [PASS] Trig keys 1 and 2 typed 'A' and 'B'")
 
-    # Confirm with YES
+    # While holding [FUNC], turn LEVEL knob (id 9) to navigate grid to 'A' (row 0, col 0)
+    # CC1 was 'CUTO', locate('C') put grid at index 2. Turn -2 steps to index 0 ('A').
+    uc.mem_write(ev_enc, struct.pack(">4Ii", 0, 0, 0, 9, -2))
+    call(enc_fn, 0, ev_enc)
+
+    # Release [FUNC] (id 1, flags=0x10: KEYUP) -> inserts 'A' at pos 0 and advances to pos 1
+    uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 1, 0x10))
+    call(key_fn, 0, ev_key)
+
+    # Step 8c: For pos 1, hold [FUNC], navigate to 'B' (row 0, col 1), and release [FUNC]
+    uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 1, 3))
+    call(key_fn, 0, ev_key)
+    # Move to 'B' (grid pos 1):
+    # From 'U' (index 20), turn delta = -19 to get to index 1 ('B')
+    uc.mem_write(ev_enc, struct.pack(">4Ii", 0, 0, 0, 9, -19))
+    call(enc_fn, 0, ev_enc)
+    # Release [FUNC] -> inserts 'B' at pos 1
+    uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 1, 0x10))
+    call(key_fn, 0, ev_key)
+    call(draw_fn, bmp, ctrl)
+    print("  [PASS] Authentic pop-up grid inserted 'A' and 'B' via FUNC hold/release")
+
+    # Confirm with YES (without FUNC)
     uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 12, 1))
     call(key_fn, 0, ev_key)
     call(tick_fn, ctrl)
@@ -187,7 +209,7 @@ def test_ccname(stock_path, core_path, ccname_path):
     s1, l1 = get_desc(148)
     assert s1.startswith("AB"), f"Expected short name starting with AB, got {s1}"
     assert l1.startswith("AB"), f"Expected long name starting with AB, got {l1}"
-    print(f"  [PASS] Custom name saved via Keyboard Mode: {s1} / {l1}")
+    print(f"  [PASS] Custom name saved via Pop-Up Naming Screen: {s1} / {l1}")
 
     # 9. Test Key NO: Close page
     uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 13, 1)) # Key NO (id 13), pressed
@@ -212,10 +234,23 @@ def test_ccname(stock_path, core_path, ccname_path):
     assert is_open == 1, "Expected ccname_open == 1 after holding [FUNC] + Knob C for 6 ticks"
     print("  [PASS] Digitakt II shortcut: [FUNC] + hold Knob C opened Naming Screen directly")
 
-    # Type 'C' (Trig 3, id 26) and 'D' (Trig 4, id 27)
-    uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 26, 1))
+    # Use Pop-Up grid to set 'C' and 'D':
+    # Hold [FUNC], navigate to 'C' (grid pos 2), release [FUNC]
+    uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 1, 3))
     call(key_fn, 0, ev_key)
-    uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 27, 1))
+    # Slot 3 is "EG Intensity". 'E' is index 4. Delta -2 -> 'C' (index 2).
+    uc.mem_write(ev_enc, struct.pack(">4Ii", 0, 0, 0, 9, -2))
+    call(enc_fn, 0, ev_enc)
+    uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 1, 0x10))
+    call(key_fn, 0, ev_key)
+
+    # Hold [FUNC], navigate to 'D' (grid pos 3), release [FUNC]
+    uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 1, 3))
+    call(key_fn, 0, ev_key)
+    # Pos 1 has 'G' (index 6). Delta -3 -> 'D' (index 3).
+    uc.mem_write(ev_enc, struct.pack(">4Ii", 0, 0, 0, 9, -3))
+    call(enc_fn, 0, ev_enc)
+    uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 1, 0x10))
     call(key_fn, 0, ev_key)
 
     # Press YES to confirm and save
@@ -242,8 +277,13 @@ def test_ccname(stock_path, core_path, ccname_path):
     assert is_open == 1, "Expected ccname_open == 1 immediately on KEYLONG event"
     print("  [PASS] Native long-press event (flags & 0x20) on Knob H opened Naming Screen directly")
 
-    # Type 'H' (Trig 8, id 31)
-    uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 31, 1))
+    # Hold FUNC, navigate to 'H' (pos 7), release FUNC
+    uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 1, 3))
+    call(key_fn, 0, ev_key)
+    # Slot 8 initial was 'SHAP' ("Osc Shape"). locate('O') is index 14. Delta -7 -> pos 7 ('H').
+    uc.mem_write(ev_enc, struct.pack(">4Ii", 0, 0, 0, 9, -7))
+    call(enc_fn, 0, ev_enc)
+    uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 1, 0x10))
     call(key_fn, 0, ev_key)
 
     # Press YES to confirm and save
