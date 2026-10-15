@@ -455,12 +455,6 @@ void ccname_draw(void *bmp, void *ctrl)
     if (edit_mode == 1) {
         /* ==== ELEKTRON AUTHENTIC NAMING SCREEN ==== */
         struct cc_slot *slot = &tr->slots[cur_slot];
-        static const char *const GRID_DISPLAY[4] = {
-            "A B C D E F G H I J K L M",
-            "N O P Q R S T U V W X Y Z",
-            "0 1 2 3 4 5 6 7 8 9 - _ +",
-            "! ? / # % * . - : = ( ) SP"
-        };
         int r;
 
         /* Top Header */
@@ -492,22 +486,34 @@ void ccname_draw(void *bmp, void *ctrl)
 
         if (grid_active) {
             /* Pop-Up Naming Grid (shown while holding [FUNC]) */
-            FILLRECT(bmp, 1, 1, 126, 31, 0);
-            FILLRECT(bmp, 1, 1, 126, 1, 1);
-            FILLRECT(bmp, 1, 31, 126, 31, 1);
-            FILLRECT(bmp, 1, 1, 1, 31, 1);
-            FILLRECT(bmp, 126, 1, 126, 31, 1);
+            int c;
+            FILLRECT(bmp, 1, 0, 126, 32, 0);
+            FILLRECT(bmp, 1, 0, 126, 0, 1);
+            FILLRECT(bmp, 1, 32, 126, 32, 1);
+            FILLRECT(bmp, 1, 0, 1, 32, 1);
+            FILLRECT(bmp, 126, 0, 126, 32, 1);
 
-            TEXT(bmp, FONT5, 4, 25, -1, "SELECT CHAR [RELEASE FUNC]");
+            TEXT(bmp, FONT5, 6, 26, -1, "SELECT CHAR [RELEASE FUNC]");
             for (r = 0; r < 4; r++) {
-                int ry = 19 - r * 6;
-                TEXT(bmp, FONT5, 4, ry, -1, "%s", GRID_DISPLAY[r]);
+                int ry = 20 - r * 5;
+                for (c = 0; c < 13; c++) {
+                    int cx = 6 + c * 9;
+                    if (r == 3 && c == 12) {
+                        TEXT(bmp, FONT5, cx, ry, -1, "SP");
+                    } else {
+                        char ch_str[2];
+                        ch_str[0] = GRID_CHARS[r][c];
+                        ch_str[1] = '\0';
+                        TEXT(bmp, FONT5, cx, ry, -1, "%s", ch_str);
+                    }
+                }
             }
             /* Highlight selected character in grid */
             {
-                int hx = 4 + grid_col * 9;
-                int hy = 19 - grid_row * 6;
-                FILLRECT(bmp, hx - 1, hy - 1, hx + (grid_row == 3 && grid_col == 12 ? 10 : 6), hy + 5, -1);
+                int hx = 6 + grid_col * 9;
+                int hy = 20 - grid_row * 5;
+                int hw = (grid_row == 3 && grid_col == 12) ? 10 : 6;
+                FILLRECT(bmp, hx - 1, hy - 1, hx + hw - 1, hy + 5, -1);
             }
         } else {
             /* Standard editing view hints */
