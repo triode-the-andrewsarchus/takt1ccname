@@ -17,10 +17,11 @@ Musicians sequencing multiple external synths must memorize or write down which 
 ## The Solution
 
 **takt1ccname** allows setting individual custom names for each of the 8 MIDI CCs per MIDI track:
-- **On-Screen Display:** Whenever a MIDI track (TRK 9–16) is active, the FLTR and AMP pages display your custom short names (e.g. `CUTO`, `RESO`, `ATK `, `DEC `) above encoders A–H instead of `VAL1`..`VAL8`.
-- **Parameter Popups & Lists:** Turning or holding encoders shows your custom long names (e.g. `Cutoff`, `Resonance`, `Attack Time`).
+- **On-Screen Display:** Whenever a MIDI track (TRK 9–16) is active, the FLTR and AMP pages display your custom 4-character names (e.g. `CUTO`, `RESO`, `ATK `, `DEC `) above encoders A–H instead of `VAL1`..`VAL8`.
+- **Parameter Popups & Lists:** Turning or holding encoders shows your custom 4-character names cleanly without truncation.
 - **LFO Modulation Destinations:** The LFO DEST page displays the custom parameter names for the track.
 - **Independent Per Track:** Track 9 can control a subtractive poly synth (`CUTO`, `RESO`, `ENV `...), Track 10 can control an FM synth (`WAVE`, `TIMB`, `MORP`...), and Track 11 can control a drum machine (`PICH`, `SNAP`, `TONE`...).
+- **Kit & Project Persistence:** Presets selected per track are stored into the pattern's non-volatile kit mirror, surviving power cycles and project saves.
 
 ---
 
@@ -36,8 +37,8 @@ Musicians sequencing multiple external synths must memorize or write down which 
   - `DRUM/SAMP`: External drum machines and samplers (`PICH`, `DECA`, `TUNE`, `SNAP`, `TONE`, `SWNG`, `VOL `, `PAN `)
   - `MOD/FX`: FX processors and pedals (`TIME`, `FEED`, `RATE`, `DPTH`, `MIX `, `DRY `, `WET `, `SHAP`)
   - `GEN. MIDI`: General MIDI & DAW controls (`MOD `, `BREA`, `VOL `, `PAN `, `EXPR`, `SUST`, `BRIG`, `REVB`)
-- **Quick Name Library:** Over 40 standard synth parameter abbreviations (`CUTO`, `RESO`, `FLTR`, `PWM `, `SYNC`, `DIST`, `GLID`, `PORT`...) selectable in seconds.
-- **Character Editor:** Edit any custom short name (up to 4 chars) and long name (up to 15 chars) character-by-character directly from the hardware front panel.
+- **Quick Name Library:** 32 standard synth parameter abbreviations (`CUTO`, `RESO`, `ENV `, `ATK `, `DEC `, `SUS `, `REL `, `VOL `, `PAN `, `TUNE`, `PICH`, `GLID`, `LFOR`, `LFOD`, `WAVE`, `PWM `, `SUB `, `DIST`, `TIME`, `FEED`, `RATE`, `DPTH`, `MIX `, `DRY `, `WET `, `MOD `, `BREA`, `EXPR`, `BRIG`, `REVB`, `SHAP`) selectable via Knob D in seconds.
+- **Character Editor:** Edit any custom 4-character name directly from the hardware front panel.
 - **Clipboard Shortcuts:** Fast copy/paste between MIDI tracks.
 - **Zero Audio Impact:** Zero CPU overhead during playback and render; zero impact on audio tracks.
 - **100% Non-Colliding:** Uses the core event bus and dynamic descriptor redirection rather than patching shared code sites.
@@ -49,8 +50,8 @@ Musicians sequencing multiple external synths must memorize or write down which 
 Just like on the Digitakt II:
 1. Select any MIDI track (**TRK 9–16**).
 2. On the **FLTR** (CC VALUE) or **AMP** (CC SELECT) page, **press and hold `[FUNC]` and press & hold DATA ENTRY knob A–H** (~300 ms).
-3. The on-screen **Naming Screen & Trig Keyboard** opens immediately for that exact CC slot!
-4. Type your custom name and press **`[YES]`** to save. The naming modal closes directly back to your parameter page with your new custom name active!
+3. The on-screen **Authentic Elektron Naming Screen** opens immediately for that exact CC slot!
+4. Edit the 4-character name and press **`[YES]`** to save. The naming modal closes directly back to your parameter page with your new custom name active!
 
 ---
 
@@ -66,21 +67,17 @@ You can also navigate to **SETTINGS > MIDI CC NAMES** on the Digitakt to open th
 - **[YES]:** Enter character editing mode for the selected slot.
 - **[NO]:** Exit and return to the SETTINGS menu.
 
-### Authentic Naming Screen & Trig Keyboard Mode
-Pressing **[YES]** or pushing the **LEVEL/DATA** knob on any CC slot opens the dedicated Naming Screen:
-- **Trig Keys 1–16 (Hardware Keyboard):** Direct alphanumeric typing at hardware speed.
-  - **Bank 1 (`[A-P]`):** Trig 1 = `A`, Trig 2 = `B` ... Trig 16 = `P`
-  - **Bank 2 (`[Q-5]`):** Trig 1 = `Q`, Trig 2 = `R` ... Trig 10 = `Z`, Trig 11 = `0` ... Trig 16 = `5`
-  - **Bank 3 (`[SYM]`):** Trig 1 = `6`, Trig 2 = `7` ... symbols (`-`, `_`, `+`, `/`, `!`, `?`, `#`, `%`, `*`, `.`, `:`, ` `)
-- **[PAGE]:** Cycle between Trig keyboard banks (`A-P` -> `Q-5` -> `SYM`).
-- **[FUNC] + [PAGE]:** Toggle editing Long Name (up to 15 chars) vs custom Short Name (up to 4 chars).
-- **LEVEL/DATA Knob:** Scroll characters at current cursor position.
-- **[LEFT] / [RIGHT]:** Move cursor position left/right.
-- **[UP] / [DOWN]:** Step character at cursor up/down.
-- **[FUNC] + [NO]:** Erase character / Backspace (shifts remaining characters left).
-- **[FUNC] + [YES]:** Insert Space (shifts remaining characters right).
-- **[YES]:** Confirm name and save.
-- **[NO]:** Cancel and return to slots list.
+### Authentic Elektron Pop-Up Naming Screen
+Pressing **[YES]** on any CC slot opens the dedicated Naming Screen:
+- **Hold `[FUNC]`:** Opens the 4-row character selection matrix.
+  - **LEVEL/DATA Knob or Arrow Keys:** Move cursor across the character matrix.
+  - **Release `[FUNC]`:** Inserts the highlighted character and advances cursor to next position.
+- **`[LEFT]` / `[RIGHT]`:** Move character cursor position (0..3).
+- **`[UP]` / `[DOWN]` or LEVEL/DATA Knob:** Step character at cursor up/down without opening grid.
+- **`[FUNC]` + `[NO]`:** Erase character / Backspace.
+- **`[FUNC]` + `[YES]`:** Insert Space.
+- **`[YES]`:** Confirm name and save.
+- **`[NO]`:** Cancel and return to overview list.
 
 ### Track Clipboard Shortcuts
 - **[FUNC] + [RECORD]:** Copy current track's CC names to clipboard.

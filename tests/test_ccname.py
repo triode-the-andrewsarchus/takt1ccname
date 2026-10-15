@@ -111,9 +111,9 @@ def test_ccname(stock_path, core_path, ccname_path):
     s2, l2 = get_desc(149)
     s8, l8 = get_desc(155)
     sel1, _ = get_desc(156)
-    assert s1 == "CUTO" and l1 == "Cutoff", f"Expected CUTO/Cutoff on T09, got {s1}/{l1}"
-    assert s2 == "RESO" and l2 == "Resonance", f"Expected RESO/Resonance on T09, got {s2}/{l2}"
-    assert s8 == "LFOR" and l8 == "LFO Rate", f"Expected LFOR/LFO Rate on T09, got {s8}/{l8}"
+    assert s1 == "CUTO" and l1 == "CUTO", f"Expected CUTO/CUTO on T09, got {s1}/{l1}"
+    assert s2 == "RESO" and l2 == "RESO", f"Expected RESO/RESO on T09, got {s2}/{l2}"
+    assert s8 == "LFOR" and l8 == "LFOR", f"Expected LFOR/LFOR on T09, got {s8}/{l8}"
     assert sel1 == "CUTO", f"Expected SEL1 to also reflect CUTO, got {sel1}"
     print("  [PASS] MIDI Track 9 (index 8): CUTO, RESO, ... LFOR active")
 
@@ -124,9 +124,9 @@ def test_ccname(stock_path, core_path, ccname_path):
     s1, l1 = get_desc(148)
     s3, l3 = get_desc(150)
     s8, l8 = get_desc(155)
-    assert s1 == "CUTO" and l1 == "Cutoff Freq", f"Expected CUTO/Cutoff Freq on T10, got {s1}/{l1}"
-    assert s3 == "EG  " and l3 == "EG Intensity", f"Expected EG  /EG Intensity on T10, got {s3}/{l3}"
-    assert s8 == "SHAP" and l8 == "Osc Shape", f"Expected SHAP/Osc Shape on T10, got {s8}/{l8}"
+    assert s1 == "CUTO" and l1 == "CUTO", f"Expected CUTO/CUTO on T10, got {s1}/{l1}"
+    assert s3 == "EG  " and l3 == "EG  ", f"Expected EG  /EG   on T10, got {s3}/{l3}"
+    assert s8 == "SHAP" and l8 == "SHAP", f"Expected SHAP/SHAP on T10, got {s8}/{l8}"
     print("  [PASS] MIDI Track 10 (index 9): Minilogue preset active")
 
     # 4. Switch back to Audio Track 1 (TRK 2)
@@ -280,8 +280,8 @@ def test_ccname(stock_path, core_path, ccname_path):
     # Hold FUNC, navigate to 'H' (pos 7), release FUNC
     uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 1, 3))
     call(key_fn, 0, ev_key)
-    # Slot 8 initial was 'SHAP' ("Osc Shape"). locate('O') is index 14. Delta -7 -> pos 7 ('H').
-    uc.mem_write(ev_enc, struct.pack(">4Ii", 0, 0, 0, 9, -7))
+    # Slot 8 initial was 'SHAP'. locate('S') is index 18. Delta -11 -> pos 7 ('H').
+    uc.mem_write(ev_enc, struct.pack(">4Ii", 0, 0, 0, 9, -11))
     call(enc_fn, 0, ev_enc)
     uc.mem_write(ev_key, struct.pack(">5I", 0, 0, 0, 1, 0x10))
     call(key_fn, 0, ev_key)
@@ -296,7 +296,42 @@ def test_ccname(stock_path, core_path, ccname_path):
     s8, l8 = get_desc(155) # CC8 (id 155)
     assert s8.startswith("H"), f"Expected CC8 short name starting with H, got {s8}"
     assert l8.startswith("H"), f"Expected CC8 long name starting with H, got {l8}"
-    print(f"  [PASS] Custom CC8 (Knob H) name saved via hardware long-press: {s8} / {l8}")
+    # 12. Test Kitstore project & power-cycle persistence
+    KIT_ADDR = 0x41980000
+    UI_KIT_PTR = 0x4199ec44 if is_154 else 0x4199dc44
+    uc.mem_write(UI_KIT_PTR, struct.pack(">I", KIT_ADDR))
+    uc.mem_write(KIT_ADDR, bytes(0x91e))
+
+    # Initialize kit by calling tick
+    call(tick_fn, ctrl)
+
+    # Open settings page so encoders are active
+    call(select_fn, 0x47b02000)
+
+    # Change MIDI Track 9 (track index 0) preset: turn Knob C 2 times -> preset 3 (MICROFREAK)
+    for _ in range(2):
+        uc.mem_write(ev_enc, struct.pack(">4Ii", 0, 0, 0, 3, 1))
+        call(enc_fn, 0, ev_enc)
+
+    # Verify that kit buffer has MIDI track 0 spare byte updated
+    # In kitstore: XB_OFF(28) = 0x20 + 4*0xa2 + (0x10 + 4) = 0x2bc
+    xb_val = uc.mem_read(KIT_ADDR + 0x2bc, 1)[0]
+    assert xb_val == 4, f"Expected kit byte at 0x2bc to be 4 (preset 3 + 1), got {xb_val}"
+    print(f"  [PASS] Track preset synchronized to kit spare byte (value: {xb_val})")
+
+    # Simulate Power Cycle / Reboot & Project Reload:
+    # 1. Clear RAM BSS (tracks array zeroed, stock_saved zeroed)
+    uc.mem_write(bss0, bytes(bss1 - bss0))
+    # 2. Call tick_fn with kit intact
+    call(tick_fn, ctrl)
+    # 3. Check descriptors for MIDI Track 9 (track 8)
+    uc.mem_write(ACTIVE_TRACK_ADDR, struct.pack(">I", 8))
+    call(tick_fn, ctrl)
+    s1, l1 = get_desc(148)
+    assert s1 == "CUTO" and l1 == "CUTO", f"Expected MicroFreak CUTO after reboot, got {s1}/{l1}"
+    s3, l3 = get_desc(150)
+    assert s3 == "CYCL" and l3 == "CYCL", f"Expected MicroFreak CYCL after reboot, got {s3}/{l3}"
+    print(f"  [PASS] Power-cycle / project reload restored preset settings from kit: {s3} / {l3}")
 
     print("\nALL CC NAME TESTS PASSED SUCCESSFULLY!")
 
